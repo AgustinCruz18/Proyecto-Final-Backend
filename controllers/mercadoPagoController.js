@@ -9,8 +9,8 @@ mercadoPagoCtrl.generarPago = async (req, res) => {
   try {
     const { idTurno, obra_social, payer_email } = req.body;
 
-    // Determina si la aplicación está en producción o desarrollo para configurar las URLs de retorno
-    const frontendBaseUrl = 'http://localhost:4200';
+    // ✅ URL del frontend desde variable de entorno (Render)
+    const frontendBaseUrl = process.env.FRONTEND_URL || 'http://localhost:4200';
 
     const descuentosObraSocial = {
       "OSDE": 1,
@@ -31,8 +31,20 @@ mercadoPagoCtrl.generarPago = async (req, res) => {
 
     // ✅ Si es 100% cubierto, no genera preferencia de pago
     if (precioFinal === 0) {
-      return res.status(200).json({ init_point: null, msg: 'Turno con cobertura total, no se requiere pago' });
+      return res.status(200).json({
+        init_point: null,
+        msg: 'Turno con cobertura total, no se requiere pago'
+      });
     }
+
+    // ✅ Log útil para debug
+    console.log('🧾 Generando preferencia con:', {
+      payer_email,
+      precioFinal,
+      obra_social,
+      idTurno,
+      frontendBaseUrl
+    });
 
     const body = {
       payer_email,
@@ -43,13 +55,12 @@ mercadoPagoCtrl.generarPago = async (req, res) => {
         unit_price: precioFinal
       }],
       metadata: {
-        idTurno: idTurno
+        idTurno
       },
-      // Se usan las URLs base dinámicas para los retornos de Mercado Pago
       back_urls: {
-        success: "http://localhost:4200/pago/estatus?status=approved",
-        failure: "http://localhost:4200/pago/estatus?status=rejected",
-        pending: "http://localhost:4200/pago/estatus?status=pending"
+        success: `${frontendBaseUrl}/pago/estatus?status=approved`,
+        failure: `${frontendBaseUrl}/pago/estatus?status=rejected`,
+        pending: `${frontendBaseUrl}/pago/estatus?status=pending`
       },
       auto_return: "approved"
     };
@@ -60,12 +71,16 @@ mercadoPagoCtrl.generarPago = async (req, res) => {
         'Content-Type': 'application/json'
       }
     });
-    console.log('🔑 Token de MP:', process.env.MERCADO_PAGO_ACCESS_TOKEN);
+
+    console.log('✅ Preferencia creada con éxito:', response.data.init_point);
 
     res.status(200).json({ init_point: response.data.init_point });
   } catch (error) {
-    console.error('❌ Error al generar el pago:', error.response?.data || error.message);
-    res.status(500).json({ msg: 'Error al generar el pago avanzado' });
+    console.error('❌ Error al generar el pago:', error.response?.data || error.message, error.stack);
+    res.status(500).json({
+      msg: 'Error al generar el pago avanzado',
+      error: error.response?.data || error.message
+    });
   }
 };
 
