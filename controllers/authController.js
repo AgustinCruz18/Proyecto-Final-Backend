@@ -8,6 +8,7 @@ exports.googleCallback = async (req, res) => {
         rol: req.user.rol
     }, process.env.JWT_SECRET);
 
-    const redirectUrl = `http://localhost:4200?token=${token}`;
+    const frontendURL = process.env.FRONTEND_URL || 'http://localhost:4200';
+    const redirectUrl = `${frontendURL}/?token=${token}`;
     res.redirect(redirectUrl);
 };
