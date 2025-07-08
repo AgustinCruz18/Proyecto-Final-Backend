@@ -55,7 +55,8 @@ mercadoPagoCtrl.generarPago = async (req, res) => {
         unit_price: precioFinal
       }],
       metadata: {
-        idTurno
+        idTurno,
+        obra_social
       },
       back_urls: {
         success: `${frontendBaseUrl}/pago/estatus?status=approved`,

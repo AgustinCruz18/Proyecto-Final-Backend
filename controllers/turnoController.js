@@ -113,6 +113,11 @@ exports.reservar = async (req, res) => {
         turno.eventoGoogleId = evento.id;
 
         await turno.save();
+        console.log('📥 Datos recibidos en reserva:', {
+            idTurno: req.params.id,
+            pacienteId,
+            obraSocialElegida
+        });
 
         // 🔥 AÑADIR EL ENLACE DE GOOGLE CALENDAR
         res.json({
