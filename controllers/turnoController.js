@@ -1,11 +1,9 @@
-// backend-turnos/controllers/turnoController.js
+//backend-turnos/controllers/turnoController.js
 const Turno = require('../models/Turno');
 const { crearEventoCalendar, eliminarEventoCalendar, actualizarEventoCalendar } = require('../config/google-calendar.service');
 const User = require('../models/User');
-const Especialidad = require('../models/Especialidad');
-const Ficha = require('../models/FichaPaciente');
-const { zonedTimeToUtc, format } = require('date-fns-tz');
-const { format: formatDate } = require('date-fns');
+const Especialidad = require('..//models/Especialidad');
+const Ficha = require('../models/FichaPaciente'); // agrega esta línea en turnoController.js
 
 
 exports.obtenerTodos = async (req, res) => {
@@ -16,7 +14,7 @@ exports.obtenerTodos = async (req, res) => {
             .populate('especialidad')
             .populate({
                 path: 'paciente',
-                select: 'nombre email rol'
+                select: 'nombre email rol'  // Solo los campos necesarios del usuario
             })
             .lean(); // Convierte los documentos Mongoose en objetos JS planos
 
@@ -64,7 +62,7 @@ exports.reservar = async (req, res) => {
     try {
         const { pacienteId, obraSocialElegida } = req.body;
 
-        const turno = await Turno.findById(req.params.id).populate('medico').populate('especialidad');
+        const turno = await Turno.findById(req.params.id).populate('medico');
         if (!turno) return res.status(404).json({ message: 'Turno no encontrado' });
         if (turno.estado !== 'disponible') return res.status(400).json({ message: 'El turno ya está ocupado' });
 
@@ -73,7 +71,7 @@ exports.reservar = async (req, res) => {
         }
 
         const paciente = await User.findById(pacienteId);
-        // const especialidad = await Especialidad.findById(turno.especialidad); // Esta línea ya no es necesaria si se popula especialidad en el turno.
+        const especialidad = await Especialidad.findById(turno.especialidad);
 
         // Calcular precio pagado según obra social
         const descuentosObraSocial = {
@@ -89,24 +87,18 @@ exports.reservar = async (req, res) => {
         const precioFinal = parseFloat((precioBase * (1 - descuento)).toFixed(2));
 
         // Google Calendar
-        // --- INICIO DE LA SOLUCIÓN DE ZONA HORARIA ---
-        const timeZone = 'America/Argentina/Buenos_Aires';
-        const fechaString = formatDate(new Date(turno.fecha), 'yyyy-MM-dd');
-        const horaString = turno.hora;
-        const fechaHoraCompletaString = `${fechaString}T${horaString}`;
+        const fechaTurno = new Date(turno.fecha);
+        const [hours, minutes] = turno.hora.split(':').map(Number);
+        fechaTurno.setHours(hours, minutes, 0, 0);
 
-        const fechaEnZonaArgentina = zonedTimeToUtc(fechaHoraCompletaString, timeZone);
-        const fechaFinEnZonaArgentina = new Date(fechaEnZonaArgentina.getTime() + 30 * 60000);
-
-        const startDateTimeISO = format(fechaEnZonaArgentina, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone });
-        const endDateTimeISO = format(fechaFinEnZonaArgentina, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone });
-        // --- FIN DE LA SOLUCIÓN ---
+        const startDateTime = new Date(fechaTurno);
+        const endDateTime = new Date(startDateTime.getTime() + 30 * 60000);
 
         const evento = await crearEventoCalendar({
-            summary: `Turno: ${turno.especialidad.nombre} con Dr. ${turno.medico.nombre} ${turno.medico.apellido}`,
+            summary: `Turno: ${especialidad.nombre} con Dr. ${turno.medico.nombre} ${turno.medico.apellido}`,
             description: `Paciente: ${paciente.nombre} ${paciente.apellido}\nEmail: ${paciente.email}\nObra Social: ${obraSocialElegida.nombre}`,
-            startDateTime: startDateTimeISO, // Usamos el string ISO correcto
-            endDateTime: endDateTimeISO,      // Usamos el string ISO correcto
+            startDateTime: startDateTime.toISOString(),
+            endDateTime: endDateTime.toISOString(),
             attendees: [{ email: paciente.email }]
         });
 
@@ -155,24 +147,18 @@ exports.reservarTurnoDirecto = async (req, res) => {
         if (!paciente) return res.status(404).json({ msg: 'Paciente no encontrado' });
 
         // Crear evento Google Calendar
-        // --- INICIO DE LA SOLUCIÓN DE ZONA HORARIA ---
-        const timeZone = 'America/Argentina/Buenos_Aires';
-        const fechaString = formatDate(new Date(turno.fecha), 'yyyy-MM-dd');
-        const horaString = turno.hora;
-        const fechaHoraCompletaString = `${fechaString}T${horaString}`;
+        const fechaTurno = new Date(turno.fecha);
+        const [hours, minutes] = turno.hora.split(':').map(Number);
+        fechaTurno.setHours(hours, minutes, 0, 0);
 
-        const fechaEnZonaArgentina = zonedTimeToUtc(fechaHoraCompletaString, timeZone);
-        const fechaFinEnZonaArgentina = new Date(fechaEnZonaArgentina.getTime() + 30 * 60000);
-
-        const startDateTimeISO = format(fechaEnZonaArgentina, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone });
-        const endDateTimeISO = format(fechaFinEnZonaArgentina, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone });
-        // --- FIN DE LA SOLUCIÓN ---
+        const startDateTime = new Date(fechaTurno);
+        const endDateTime = new Date(startDateTime.getTime() + 30 * 60000);
 
         const evento = await crearEventoCalendar({
             summary: `Turno: ${turno.especialidad.nombre} con Dr. ${turno.medico.nombre} ${turno.medico.apellido}`,
             description: `Paciente: ${paciente.nombre}\nEmail: ${paciente.email}\nObra Social: ${obraSocial.nombre}`,
-            startDateTime: startDateTimeISO, // Usamos el string ISO correcto
-            endDateTime: endDateTimeISO,      // Usamos el string ISO correcto
+            startDateTime: startDateTime.toISOString(),
+            endDateTime: endDateTime.toISOString(),
             attendees: [{ email: paciente.email }]
         });
 
@@ -238,23 +224,23 @@ exports.actualizar = async (req, res) => {
         if (!turno) return res.status(404).json({ message: 'Turno no encontrado' });
 
         if (turno.eventoGoogleId) {
-            // --- INICIO DE LA SOLUCIÓN DE ZONA HORARIA ---
-            const timeZone = 'America/Argentina/Buenos_Aires';
-            const fechaString = formatDate(new Date(req.body.fecha), 'yyyy-MM-dd');
-            const horaString = req.body.hora;
-            const fechaHoraCompletaString = `${fechaString}T${horaString}`;
+            // Para el evento de Google Calendar, necesitas la fecha normalizada y la hora del body
+            const [hours, minutes] = req.body.hora.split(':').map(Number);
+            fechaLocal.setHours(hours, minutes, 0, 0); // Ajusta la hora en la fecha normalizada para el evento
 
-            const fechaEnZonaArgentina = zonedTimeToUtc(fechaHoraCompletaString, timeZone);
-            const fechaFinEnZonaArgentina = new Date(fechaEnZonaArgentina.getTime() + 30 * 60000);
-
-            const startDateTimeISO = format(fechaEnZonaArgentina, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone });
-            const endDateTimeISO = format(fechaFinEnZonaArgentina, "yyyy-MM-dd'T'HH:mm:ssXXX", { timeZone });
-            // --- FIN DE LA SOLUCIÓN ---
+            const startDateTime = new Date(fechaLocal);
+            const endDateTime = new Date(startDateTime.getTime() + 30 * 60000);
 
             await actualizarEventoCalendar(turno.eventoGoogleId, {
-                summary: 'Turno actualizado', // Puedes agregar más detalles si quieres
-                start: { dateTime: startDateTimeISO, timeZone: timeZone },
-                end: { dateTime: endDateTimeISO, timeZone: timeZone }
+                summary: 'Turno actualizado',
+                start: {
+                    dateTime: startDateTime.toISOString(),
+                    timeZone: 'America/Argentina/Buenos_Aires'
+                },
+                end: {
+                    dateTime: endDateTime.toISOString(),
+                    timeZone: 'America/Argentina/Buenos_Aires'
+                }
             });
         }
 
